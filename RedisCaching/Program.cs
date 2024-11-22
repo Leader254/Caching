@@ -20,7 +20,12 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.InstanceName = builder.Configuration["RedisCacheOptions:InstanceName"];
 });
 
-builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(builder.Configuration["RedisCacheOptions:Configuration"]));
+//builder.Services.AddSingleton<IConnectionMultiplexer>(sp => ConnectionMultiplexer.Connect(builder.Configuration["RedisCacheOptions:Configuration"]));
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var configuration = builder.Configuration["RedisCacheOptions:Configuration"];
+    return ConnectionMultiplexer.Connect(configuration);
+});
 
 var app = builder.Build();
 

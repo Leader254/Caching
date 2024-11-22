@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using RedisCaching.Data;
 using RedisCaching.Dtos;
 using RedisCaching.Models;
+using StackExchange.Redis;
 using System.Text.Json;
 
 namespace RedisCaching.Controllers
@@ -15,11 +16,13 @@ namespace RedisCaching.Controllers
     {
         private readonly AppDbContext _context;
         private readonly IDistributedCache _cache;
+        private readonly IConnectionMultiplexer _redis;
 
-        public ProductsController(AppDbContext context, IDistributedCache cache)
+        public ProductsController(AppDbContext context, IDistributedCache cache, IConnectionMultiplexer redis)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+            _redis = redis;
         }
 
         [HttpGet("all")]
@@ -30,8 +33,19 @@ namespace RedisCaching.Controllers
 
             try
             {
+                if (!_redis.IsConnected)
+                {
+                    var redisStatus = _redis.GetStatus();
+
+                    return StatusCode(500, new
+                    {
+                        message = "Redis connection is not active. Please check your configuration.",
+                        detail = redisStatus
+                    });
+                }
+
                 var cachedData = await _cache.GetStringAsync(cacheKey);
-                if (!string.IsNullOrEmpty(cachedData)) 
+                if (!string.IsNullOrEmpty(cachedData))
                 {
                     products = JsonSerializer.Deserialize<List<Product>>(cachedData) ?? new List<Product>();
                 }
@@ -117,6 +131,13 @@ namespace RedisCaching.Controllers
                 return StatusCode(500, new { message = "An error occurred while updating the product.", details = ex.Message });
             }
         }
+
+
+        /// <summary>
+        /// Deletes a specific Product.
+        /// </summary>
+        /// <param name="id"></param>
+        /// <returns></returns>
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteProduct(Guid id)
         {
@@ -138,6 +159,23 @@ namespace RedisCaching.Controllers
             }
         }
 
+        [HttpGet("categories")]
+        public async Task<IActionResult> GetAllCategories()
+        {
+            try
+            {
+                var categories = await _context.Products
+                    .Select(p => p.Category)
+                    .Distinct()
+                    .ToListAsync();
+
+                return Ok(categories);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "An error occurred while retrieving categories.", detail = ex.Message });
+            }
+        }
 
         [HttpGet("category")]
         public async Task<IActionResult> GetProductByCategory(string category)
